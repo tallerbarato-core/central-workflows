@@ -2,7 +2,9 @@ name: Flujo Reutilizable Generar Diagrama
 
 on:
   workflow_call:
-    # No pedimos el secreto como obligatorio aquí
+    secrets:
+      GEMINI_API_KEY:
+        required: true
 
 jobs:
   actualizar-diagrama:
