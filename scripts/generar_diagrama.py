@@ -62,13 +62,17 @@ if not contenido_scripts.strip():
 # 3. Prompt para Gemini
 prompt = f"""
 Eres un arquitecto de software experto en diagramas Mermaid.js.
-Analiza todos los archivos de código del repositorio y genera UNICAMENTE un diagrama de arquitectura y flujo 'flowchart TD' en sintaxis Mermaid.
-Mapea la interacción completa: entradas/interfaz, backend/scripts, conexiones externas (APIs, scraping, bases de datos o servicios) y resultados.
+Analiza todos los archivos de código del proyecto y genera UNICAMENTE un diagrama de arquitectura y flujo 'flowchart TD' en sintaxis Mermaid.
 
-REGLAS ESTRICTAS:
-- Devuelve SOLO el bloque delimitado por ```mermaid y ```.
-- Cero explicaciones, cero saludos, cero comentarios adicionales fuera del bloque.
-- Crea subgraphs claros para separar frontend, backend, servicios externos, etc.
+REGLAS DE SINTAXIS ESTRICTAS PARA MERMAID (EVITAR ERRORES DE PARSEO):
+1. Devuelve SOLO el bloque delimitado por ```mermaid y ```. Cero texto fuera.
+2. NUNCA uses paréntesis, corchetes, barras ni símbolos especiales sin comillas en las etiquetas de conexión.
+   INCORRECTO: -->|POST (medida)|
+   CORRECTO:   -->|"POST (medida)"| o -->|POST medida|
+3. Todos los textos con saltos de línea dentro de nodos deben usar comillas dobles y comillas simples en el nodo:
+   N_ID["Nombre del nodo<br>Detalle"]
+4. No uses caracteres conflictivos como comillas dobles dentro de otras comillas dobles.
+5. Crea subgraphs claros para separar frontend, backend, APIs externas, base de datos y salidas.
 
 Código del proyecto:
 {contenido_scripts}
