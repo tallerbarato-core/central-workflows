@@ -1,6 +1,5 @@
 import os
 import re
-import glob
 import time
 from google import genai
 
@@ -10,66 +9,96 @@ if not api_key:
 
 client = genai.Client(api_key=api_key)
 
-# 1. Recopilar scripts del repositorio (.gs, .py, .yml)
-extensiones = ("*.gs", "*.py", ".github/workflows/*.yml")
-archivos = []
-for ext in extensiones:
-    archivos.extend(glob.glob(ext))
+# 1. Carpetas y extensiones a excluir (ruido, binarios y librerías)
+CARPETAS_IGNORADAS = {
+    ".git", ".github", ".central-tools", "node_modules", "vendor",
+    "venv", ".venv", "__pycache__", "dist", "build"
+}
 
+EXTENSIONES_IGNORADAS = {
+    # Documentación y estilos visuales
+    ".md", ".css", ".scss", ".less", ".txt", ".json", ".lock",
+    # Imágenes y multimedia
+    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".pdf",
+    # Archivos comprimidos y ejecutables
+    ".zip", ".tar", ".gz", ".rar", ".exe", ".bin"
+}
+
+archivos_proyecto = []
+
+# Recorrer todo el árbol de carpetas del repositorio
+for raiz, carpetas, ficheros in os.walk("."):
+    # Filtrar carpetas excluidas sobre la marcha
+    carpetas[:] = [c for c in carpetas if c not in CARPETAS_IGNORADAS]
+    
+    for f in ficheros:
+        nombre_completo = os.path.join(raiz, f)
+        _, ext = os.path.splitext(f)
+        
+        if ext.lower() in EXTENSIONES_IGNORADAS:
+            continue
+        if f.lower() in {"readme.md", "license"}:
+            continue
+            
+        archivos_proyecto.append(nombre_completo)
+
+# 2. Leer contenido de los scripts encontrados
 contenido_scripts = ""
-for ruta in archivos:
-    if os.path.exists(ruta):
-        with open(ruta, "r", encoding="utf-8", errors="ignore") as f:
-            contenido_scripts += f"\n--- ARCHIVO: {ruta} ---\n{f.read()}\n"
+for ruta in archivos_proyecto:
+    try:
+        with open(ruta, "r", encoding="utf-8", errors="ignore") as archivo:
+            texto = archivo.read()
+            # Omitir archivos gigantescos o minificados
+            if len(texto) > 100000:
+                texto = texto[:100000] + "\n...[archivo truncado por tamaño]..."
+            contenido_scripts += f"\n--- ARCHIVO: {ruta} ---\n{texto}\n"
+    except Exception as e:
+        print(f"Omitiendo {ruta}: {e}")
 
 if not contenido_scripts.strip():
-    print("No se encontraron scripts relevantes para diagramar.")
+    print("No se encontraron scripts funcionales para procesar.")
     exit(0)
 
+# 3. Prompt para Gemini
 prompt = f"""
 Eres un arquitecto de software experto en diagramas Mermaid.js.
-Analiza los scripts del repositorio y genera UNICAMENTE un diagrama 'flowchart TD' en sintaxis Mermaid.
-Mapea claramente triggers, funciones, filtros, conexiones externas (APIs/FTP/Gmail) y hojas de cálculo.
+Analiza todos los archivos de código del repositorio y genera UNICAMENTE un diagrama de arquitectura y flujo 'flowchart TD' en sintaxis Mermaid.
+Mapea la interacción completa: entradas/interfaz, backend/scripts, conexiones externas (APIs, scraping, bases de datos o servicios) y resultados.
 
 REGLAS ESTRICTAS:
 - Devuelve SOLO el bloque delimitado por ```mermaid y ```.
 - Cero explicaciones, cero saludos, cero comentarios adicionales fuera del bloque.
-- Subgraphs claros por cada archivo o servicio.
+- Crea subgraphs claros para separar frontend, backend, servicios externos, etc.
 
-Scripts:
+Código del proyecto:
 {contenido_scripts}
 """
 
-# 2. Descubrir modelos disponibles automáticamente
-print("Buscando modelos compatibles en la cuenta...")
+# 4. Detección automática y ordenación de modelos
+print("Buscando modelos compatibles...")
 modelos_candidatos = []
 try:
     for m in client.models.list():
         nombre = getattr(m, "name", "")
         n = nombre.lower().replace("models/", "")
-        # Descartar modelos que no sean para generación de texto
         if "gemini" in n and not any(x in n for x in ["tts", "embedding", "imagen", "audio", "vision"]):
             modelos_candidatos.append(n)
 except Exception as e:
     print(f"Aviso al listar modelos: {e}")
 
-# Fallback con los modelos disponibles si la API no permite listar
 if not modelos_candidatos:
     modelos_candidatos = ["gemini-3.5-flash-lite", "gemini-3.8-flash"]
 
-# Ordenar dando prioridad a lite y luego a flash (para evitar saturación)
 def ordenar_prioridad(nombre):
-    score = 10
     if "lite" in nombre:
-        score = 1
-    elif "flash" in nombre:
-        score = 2
-    return score
+        return 1
+    if "flash" in nombre:
+        return 2
+    return 3
 
 modelos_candidatos = sorted(list(set(modelos_candidatos)), key=ordenar_prioridad)
-print(f"Modelos detectados (orden de prueba): {modelos_candidatos}")
 
-# 3. Llamar a la API probando alternativas ante saturación (503)
+# 5. Generación del diagrama
 respuesta = None
 for modelo in modelos_candidatos:
     print(f"Probando modelo: {modelo}...")
@@ -80,10 +109,10 @@ for modelo in modelos_candidatos:
         )
         if res and res.text:
             respuesta = res
-            print(f"-> ¡Éxito generando con {modelo}!")
+            print(f"-> Generado con éxito usando {modelo}")
             break
     except Exception as e:
-        print(f"Aviso con {modelo}: {e}. Pasando al siguiente...")
+        print(f"Aviso con {modelo}: {e}. Probando siguiente...")
         time.sleep(2)
 
 if not respuesta:
@@ -95,7 +124,7 @@ if not bloque_mermaid.startswith("```mermaid"):
     if match:
         bloque_mermaid = match.group(0)
 
-# 4. Actualizar README.md
+# 6. Actualizar README.md
 archivo_readme = "README.md"
 tag_inicio = "<!-- MERMAID_START -->"
 tag_fin = "<!-- MERMAID_END -->"
@@ -104,7 +133,7 @@ if os.path.exists(archivo_readme):
     with open(archivo_readme, "r", encoding="utf-8") as f:
         readme_texto = f.read()
 else:
-    readme_texto = f"# Documentación\n\n{tag_inicio}\n{tag_fin}\n"
+    readme_texto = f"# Documentación del Repositorio\n\n{tag_inicio}\n{tag_fin}\n"
 
 patron = re.compile(f"{re.escape(tag_inicio)}[\\s\\S]*?{re.escape(tag_fin)}")
 nuevo_bloque = f"{tag_inicio}\n\n{bloque_mermaid}\n\n{tag_fin}"
