@@ -1,6 +1,7 @@
 import os
 import re
 import glob
+import time
 from google import genai
 
 api_key = os.environ.get("GEMINI_API_KEY")
@@ -39,11 +40,27 @@ Scripts:
 {contenido_scripts}
 """
 
-print("Consultando a Gemini...")
-respuesta = client.models.generate_content(
-    model="gemini-3.8-flash",
-    contents=prompt
-)
+# Reintentos con respaldo entre modelos
+modelos_a_probar = ["gemini-2.0-flash", "gemini-1.5-flash"]
+respuesta = None
+
+for modelo in modelos_a_probar:
+    print(f"Probando con el modelo: {modelo}...")
+    for intento in range(3):
+        try:
+            respuesta = client.models.generate_content(
+                model=modelo,
+                contents=prompt
+            )
+            break
+        except Exception as e:
+            print(f"Aviso ({modelo}, intento {intento + 1}/3): {e}")
+            time.sleep(5)
+    if respuesta:
+        break
+
+if not respuesta:
+    raise RuntimeError("No se pudo obtener respuesta de la API tras varios intentos con los modelos disponibles.")
 
 bloque_mermaid = respuesta.text.strip()
 if not bloque_mermaid.startswith("```mermaid"):
