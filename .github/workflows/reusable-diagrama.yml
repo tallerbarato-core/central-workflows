@@ -1,0 +1,51 @@
+name: Flujo Reutilizable Generar Diagrama
+
+on:
+  workflow_call:
+    secrets:
+      GEMINI_API_KEY:
+        required: true
+
+jobs:
+  actualizar-diagrama:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Descargar repositorio del proyecto
+        uses: actions/checkout@v4
+
+      - name: Descargar repositorio central (para usar el script)
+        uses: actions/checkout@v4
+        with:
+          repository: tallerbarato21/central-workflows
+          path: .central-tools
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Instalar librerías
+        run: pip install google-genai
+
+      - name: Ejecutar script de generación
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python .central-tools/scripts/generar_diagrama.py
+
+      - name: Limpiar herramientas temporales antes del commit
+        run: rm -rf .central-tools
+
+      - name: Guardar cambios en README si hubo modificaciones
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          if git diff --staged --quiet; then
+            echo "Sin cambios en el README.md."
+          else
+            git commit -m "docs: actualizar diagrama de flujo automático [skip ci]"
+            git push
+          fi
