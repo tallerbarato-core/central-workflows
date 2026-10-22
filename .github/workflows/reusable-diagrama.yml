@@ -17,7 +17,7 @@ jobs:
       - name: Descargar repositorio central (para usar el script)
         uses: actions/checkout@v4
         with:
-          repository: tallerbarato21/central-workflows
+          repository: tallerbarato-core/central-workflows
           path: .central-tools
 
       - name: Configurar Python
