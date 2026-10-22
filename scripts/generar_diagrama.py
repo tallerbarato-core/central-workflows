@@ -40,27 +40,27 @@ Scripts:
 {contenido_scripts}
 """
 
-# Reintentos con respaldo entre modelos
-modelos_a_probar = ["gemini-2.0-flash", "gemini-1.5-flash"]
+# Usar el modelo activo gemini-3.8-flash con reintentos progresivos
+modelo_activo = "gemini-3.8-flash"
 respuesta = None
+intentos_max = 5
 
-for modelo in modelos_a_probar:
-    print(f"Probando con el modelo: {modelo}...")
-    for intento in range(3):
-        try:
-            respuesta = client.models.generate_content(
-                model=modelo,
-                contents=prompt
-            )
+for intento in range(intentos_max):
+    try:
+        print(f"Llamando a {modelo_activo} (intento {intento + 1}/{intentos_max})...")
+        respuesta = client.models.generate_content(
+            model=modelo_activo,
+            contents=prompt
+        )
+        if respuesta and respuesta.text:
             break
-        except Exception as e:
-            print(f"Aviso ({modelo}, intento {intento + 1}/3): {e}")
-            time.sleep(5)
-    if respuesta:
-        break
+    except Exception as e:
+        espera = (intento + 1) * 7
+        print(f"Aviso: {e}. Esperando {espera}s antes de reintentar...")
+        time.sleep(espera)
 
 if not respuesta:
-    raise RuntimeError("No se pudo obtener respuesta de la API tras varios intentos con los modelos disponibles.")
+    raise RuntimeError(f"No se pudo obtener respuesta de {modelo_activo} tras varios intentos.")
 
 bloque_mermaid = respuesta.text.strip()
 if not bloque_mermaid.startswith("```mermaid"):
